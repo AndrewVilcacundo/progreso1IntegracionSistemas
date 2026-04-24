@@ -1,0 +1,4 @@
+patient_id,full_name,appointment_date,insurance_code
+P006,Roberto Silva,15-03-2024,IESS
+P007,Diana Castro,,PRIVADO
+P008,Pedro Mora,2024-05-10,PARTICULAR

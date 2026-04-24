@@ -1,0 +1,92 @@
+openapi: 3.0.3
+info:
+  title: API Sistema de Admisiones - SaludVital
+  description: API REST para la recepción de pacientes pre-registrados, integrando el flujo hacia Facturación.
+  version: 1.0.0
+servers:
+  - url: https://api.saludvital.com/v1
+    description: Servidor de Producción
+paths:
+  /pre-registros:
+    post:
+      summary: Enviar un nuevo paciente pre-registrado
+      description: Recibe los datos de un paciente que confirma o agenda atención, validando estructura para facilitar la facturación.
+      operationId: crearPreRegistro
+      requestBody:
+        description: Objeto de pre-registro a almacenar
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PreRegistro'
+      responses:
+        '201':
+          description: Pre-registro creado correctamente.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PreRegistroResponse'
+        '400':
+          description: Estructura de datos inválida (ej. formato de fecha incorrecto o seguro no permitido).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Error interno del servidor procesando el registro.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    PreRegistro:
+      type: object
+      required:
+        - patient_id
+        - full_name
+        - appointment_date
+        - insurance_code
+      properties:
+        patient_id:
+          type: string
+          example: "P001"
+          description: Identificador único del paciente.
+        full_name:
+          type: string
+          example: "María García López"
+          description: Nombre completo del paciente.
+        appointment_date:
+          type: string
+          format: date
+          example: "2026-04-25"
+          description: Fecha de la atención en formato YYYY-MM-DD.
+        insurance_code:
+          type: string
+          enum: [IESS, PRIVADO, NINGUNO]
+          example: "PRIVADO"
+          description: Tipo de seguro, validado entre opciones específicas.
+
+    PreRegistroResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "success"
+        message:
+          type: string
+          example: "Pre-registro completado con éxito."
+        transaction_id:
+          type: string
+          example: "tx-8475893"
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+          example: "Bad Request"
+        message:
+          type: string
+          example: "El campo 'insurance_code' debe ser uno de: IESS, PRIVADO, NINGUNO."

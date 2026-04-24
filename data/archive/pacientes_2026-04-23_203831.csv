@@ -1,0 +1,4 @@
+patient_id,full_name,appointment_date,insurance_code
+1,Juan Perez,2026-04-23,IESS
+2,Ana Lopez,2026-04-24,PRIVADO
+3,Carlos Ruiz,2026-04-25,NINGUNO
