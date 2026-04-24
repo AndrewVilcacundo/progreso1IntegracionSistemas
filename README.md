@@ -178,7 +178,7 @@ El sistema permite evidenciar:
 
 ---
 
-# 🔮 Evolución futura
+# Evolución futura
 
 Se propone migrar a una arquitectura basada en APIs REST para:
 
@@ -188,7 +188,7 @@ Se propone migrar a una arquitectura basada en APIs REST para:
 
 ---
 
-# 📄 Autor
+# Autor
 
 **Andrew Vilcacundo**
 
