@@ -193,12 +193,3 @@ Se propone migrar a una arquitectura basada en APIs REST para:
 **Andrew Vilcacundo**
 
 ---
-
-# Estado del proyecto
-
-✔ Implementación funcional
-✔ Validación completa
-✔ Cumple requerimientos del examen
-✔ Documentación incluida
-
----
