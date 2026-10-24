@@ -28,6 +28,38 @@ El diseño de integración utiliza **Apache Camel** para automatizar el procesam
 
 ---
 
+## Parte 3: Configuración de Pipeline de Entrega Continua y Estrategias de Optimización (OP 10% P1)
+
+### 1. Estrategia de Branching (GitHub Flow)
+- **Ramas de trabajo (`feature/**`):** Los desarrolladores crean ramas dedicadas para cada funcionalidad o corrección. Al enviar cambios (`push`) o abrir Pull Requests hacia `main`, el pipeline ejecuta automáticamente las etapas de validación, compilación, tests y análisis de calidad.
+- **Rama principal (`main`):** Protegida y estable. Solo tras superar todas las pruebas y revisiones de código, los cambios son fusionados. En esta rama se habilita de forma selectiva la etapa de **Entrega Continua (CD)** generando y archivando los artefactos entregables listos para producción.
+
+### 2. Etapas del Pipeline
+1. **Detección Selectiva (`detect-changes`):** Analiza rutas modificadas para ejecutar solo los jobs necesarios.
+2. **Build y Pruebas Unitarias (`build-and-test`):** Compilación en Java 17, ejecución de la suite de pruebas unitarias con JUnit 5 y empaquetado del JAR.
+3. **Análisis de Calidad de Código y Linter (`quality-audit`):** Inspección estática con **Checkstyle** (estándar de estilo/linter) y **SpotBugs** (detección de bugs y vulnerabilidades).
+4. **Entrega Continua (`cd-delivery`):** Despliegue/publicación del paquete JAR validado únicamente en la rama `main`.
+5. **Notificaciones Post-Ejecución (`notifications`):** Gestión de estados `always`, `success` y `fail`.
+
+### 3. Estrategias de Optimización Implementadas
+- **a. Ejecución Paralela:**
+  Las etapas `build-and-test` y `quality-audit` corren en paralelo sobre runners independientes una vez detectados los cambios, reduciendo el tiempo total de ejecución a la mitad.
+- **b. Cache:**
+  Uso de `cache: 'maven'` en `actions/setup-java`, preservando el repositorio `~/.m2/repository` entre corridas para evitar la re-descarga continua de dependencias y plugins.
+- **c. Ejecución Selectiva / por Ramas y Etapas:**
+  - Uso de `dorny/paths-filter` para evitar ejecuciones innecesarias si solo se modificaron documentos (`README.md`, `Entregables.md`).
+  - Filtrado condicional en `cd-delivery` (`if: github.ref == 'refs/heads/main' && github.event_name == 'push'`) para evitar entregas prematuras en ramas `feature/*`.
+  - Control de concurrencia (`cancel-in-progress: true`) para cancelar automáticamente builds obsoletos cuando se hace push consecutivo.
+- **d. Pipelines Modulares y Reutilizables:**
+  La etapa de calidad de código fue extraída al workflow reutilizable `.github/workflows/reusable-quality.yml` invocable con `workflow_call`, facilitando su reutilización en otros módulos o microservicios.
+
+### 4. Post-Acciones y Notificaciones
+- **`always()`:** Se genera un resumen tabular detallado del estado de cada etapa en `$GITHUB_STEP_SUMMARY` visible directamente en GitHub Actions.
+- **`success()`:** Emite notificación de éxito con commit y rama, además de enviar payload a webhook si está configurado el secret `NOTIFICATION_WEBHOOK`.
+- **`fail()`:** Detecta fallos en cualquiera de las etapas críticas y emite alertas de fallo inmediatas con trazabilidad.
+
+---
+
 ## Parte 4: Evolución futura del proceso mediante API
 
 **a. Propuesta de mejora**
@@ -44,3 +76,4 @@ Optimizaríamos el **envío de pre-registros** haciendo inserciones atómicas (`
    - `409 Conflict` (Ej: Si el patient_id para esa cita ya existe).
 
 *(La documentación detallada en estándar OpenAPI se adjunta en el archivo `api-admisiones.yaml`)*
+

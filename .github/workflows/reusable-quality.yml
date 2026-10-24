@@ -1,0 +1,46 @@
+name: "Reusable Code Quality"
+
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        required: false
+        type: string
+        default: "17"
+    outputs:
+      quality-status:
+        description: "Estado del análisis de calidad"
+        value: ${{ jobs.code-quality.outputs.status }}
+
+jobs:
+  code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    outputs:
+      status: ${{ job.status }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ inputs.java-version }}
+          cache: 'maven' # Estrategia de Optimización: Cache de dependencias
+
+      - name: Run Checkstyle Linter
+        run: mvn checkstyle:checkstyle
+
+      - name: Run SpotBugs Static Analysis
+        run: mvn spotbugs:check
+
+      - name: Upload Quality Reports (Artifacts)
+        if: always() # Estrategia Post: Always
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-quality-reports
+          path: |
+            target/checkstyle-result.xml
+            target/spotbugsXml.xml
+          retention-days: 7
