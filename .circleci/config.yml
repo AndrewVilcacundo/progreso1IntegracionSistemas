@@ -213,5 +213,5 @@ workflows:
                 - main
 
       # Job 7: Notificación de Fallo (se dispara si falla pruebas o calidad)
-      # Nota: En CircleCI las ramas estándar ejecutan jobs que requieren éxito previo.
+      # Nota: En CircleCI las ramas estándar ejecutan jobs que requieren éxito previooooooo.
 
