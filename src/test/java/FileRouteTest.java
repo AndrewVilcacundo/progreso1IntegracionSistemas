@@ -12,7 +12,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Pruebas unitarias y de integración para la ruta de procesamiento CSV de Camel.
+ * Pruebas unitarias y de integración para la ruta de procesamiento CSV de
+ * Camel.
  */
 public class FileRouteTest extends CamelTestSupport {
 
@@ -52,8 +53,13 @@ public class FileRouteTest extends CamelTestSupport {
     }
 
     @Test
+    void testTemporalParaProbarNotificacionDeFallo() {
+        assertEquals(1, 2, "Fallo intencional para probar CircleCI");
+    }
+
+    @Test
     public void testInsuranceValidationValues() {
-        String[] validInsurances = {"IESS", "PRIVADO", "NINGUNO"};
+        String[] validInsurances = { "IESS", "PRIVADO", "NINGUNO" };
         for (String ins : validInsurances) {
             assertTrue(ins.equals("IESS") || ins.equals("PRIVADO") || ins.equals("NINGUNO"));
         }
