@@ -7,6 +7,9 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -50,11 +53,6 @@ public class FileRouteTest extends CamelTestSupport {
         String invalidDate = "15/03/2026";
         assertTrue(validDate.matches("\\d{4}-\\d{2}-\\d{2}"), "La fecha en formato YYYY-MM-DD debe ser válida");
         assertTrue(!invalidDate.matches("\\d{4}-\\d{2}-\\d{2}"), "Formatos de fecha diferentes deben ser rechazados");
-    }
-
-    @Test
-    void testTemporalParaProbarNotificacionDeFallo() {
-        assertEquals(1, 2, "Fallo intencional para probar CircleCI");
     }
 
     @Test
