@@ -1,0 +1,217 @@
+version: 2.1
+
+executors:
+  maven-executor:
+    docker:
+      - image: cimg/openjdk:17.0
+    working_directory: ~/project
+    environment:
+      MAVEN_OPTS: -Dmaven.repo.local=.m2/repository
+
+commands:
+  restore_maven_cache:
+    description: "Restaura la cache de dependencias Maven basada en pom.xml"
+    steps:
+      - restore_cache:
+          keys:
+            - v1-dependencies-{{ checksum "pom.xml" }}
+            - v1-dependencies-
+
+  save_maven_cache:
+    description: "Guarda en cache las dependencias descargadas en .m2/repository"
+    steps:
+      - save_cache:
+          paths:
+            - .m2/repository
+          key: v1-dependencies-{{ checksum "pom.xml" }}
+
+  notify_discord:
+    description: "Envia notificacion formateada a Discord mediante Webhook"
+    parameters:
+      status:
+        type: string
+        default: "SUCCESS"
+      color:
+        type: integer
+        default: 3066993 # Verde
+    steps:
+      - run:
+          name: Enviar notificacion a Discord
+          when: always
+          command: |
+            if [ -z "$DISCORD_WEBHOOK" ]; then
+              echo "ADVERTENCIA: DISCORD_WEBHOOK no esta configurada en las variables de entorno de CircleCI."
+              exit 0
+            fi
+
+            curl -H "Content-Type: application/json" -X POST \
+              -d "{
+                    \"embeds\": [{
+                      \"title\": \"Pipeline CircleCI: << parameters.status >>\",
+                      \"description\": \"Resultado del pipeline en el repositorio **${CIRCLE_PROJECT_REPONAME}**\",
+                      \"color\": << parameters.color >>,
+                      \"fields\": [
+                        {\"name\": \"Rama\", \"value\": \"\`${CIRCLE_BRANCH}\`\", \"inline\": true},
+                        {\"name\": \"Commit\", \"value\": \"\`${CIRCLE_SHA1:0:7}\`\", \"inline\": true},
+                        {\"name\": \"Autor\", \"value\": \"${CIRCLE_USERNAME:-Sistema}\", \"inline\": true},
+                        {\"name\": \"Workflow\", \"value\": \"${CIRCLE_WORKFLOW_ID}\", \"inline\": false},
+                        {\"name\": \"Enlace de Ejecución\", \"value\": \"[Ver en CircleCI](${CIRCLE_BUILD_URL})\", \"inline\": false}
+                      ],
+                      \"footer\": {\"text\": \"Integración Continua - CircleCI\"},
+                      \"timestamp\": \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"
+                    }]
+                  }" \
+              "$DISCORD_WEBHOOK"
+
+jobs:
+  checkout-code:
+    executor: maven-executor
+    steps:
+      - checkout
+      - run:
+          name: Identificar Rama y Commit
+          command: |
+            echo "=========================================="
+            echo "Proyecto: $CIRCLE_PROJECT_REPONAME"
+            echo "Rama: $CIRCLE_BRANCH"
+            echo "Commit SHA: $CIRCLE_SHA1"
+            echo "Número de Build: $CIRCLE_BUILD_NUM"
+            echo "=========================================="
+      - persist_to_workspace:
+          root: ~/project
+          paths:
+            - .
+
+  build:
+    executor: maven-executor
+    steps:
+      - attach_workspace:
+          at: ~/project
+      - restore_maven_cache
+      - run:
+          name: Descargar dependencias y compilar
+          command: |
+            mvn -B dependency:go-offline -Dmaven.repo.local=.m2/repository || true
+            mvn -B compile -DskipTests -Dmaven.repo.local=.m2/repository
+      - save_maven_cache
+      - persist_to_workspace:
+          root: ~/project
+          paths:
+            - .m2/repository
+            - target
+
+  unit-tests:
+    executor: maven-executor
+    steps:
+      - attach_workspace:
+          at: ~/project
+      - restore_maven_cache
+      - run:
+          name: Ejecutar pruebas unitarias (JUnit 5 + Camel Test)
+          command: |
+            mvn -B test -Dmaven.repo.local=.m2/repository
+      - store_test_results:
+          path: target/surefire-reports
+      - store_artifacts:
+          path: target/surefire-reports
+          destination: surefire-reports
+
+  code-quality:
+    executor: maven-executor
+    steps:
+      - attach_workspace:
+          at: ~/project
+      - restore_maven_cache
+      - run:
+          name: Auditoria de Calidad y Linting (Checkstyle + SpotBugs)
+          command: |
+            mvn -B checkstyle:checkstyle spotbugs:check -Dmaven.repo.local=.m2/repository
+      - store_artifacts:
+          path: target/checkstyle-result.xml
+          destination: quality-reports/checkstyle-result.xml
+      - store_artifacts:
+          path: target/spotbugsXml.xml
+          destination: quality-reports/spotbugsXml.xml
+
+  package-and-delivery:
+    executor: maven-executor
+    steps:
+      - attach_workspace:
+          at: ~/project
+      - restore_maven_cache
+      - run:
+          name: Empaquetar artefacto JAR
+          command: |
+            mvn -B package -DskipTests -Dmaven.repo.local=.m2/repository
+      - run:
+          name: Verificacion de entrega continua (CD)
+          command: |
+            echo "Verificando artefacto generado para Continuous Delivery..."
+            if ls target/*.jar 1> /dev/null 2>&1; then
+              echo "ÉXITO: Se encontraron artefactos JAR en target/:"
+              ls -lh target/*.jar
+            else
+              echo "ERROR: No se encontró ningún archivo .jar empaquetado."
+              exit 1
+            fi
+      - store_artifacts:
+          path: target
+          destination: binaries
+
+  notify-success:
+    executor: maven-executor
+    steps:
+      - notify_discord:
+          status: "SUCCESS - Pipeline Exitoso"
+          color: 3066993 # Verde
+
+  notify-failure:
+    executor: maven-executor
+    steps:
+      - notify_discord:
+          status: "FAILURE - Pipeline Fallido"
+          color: 15158332 # Rojo
+
+workflows:
+  version: 2
+  ci_cd_pipeline:
+    jobs:
+      # Job 1: Checkout
+      - checkout-code
+
+      # Job 2: Build con dependencias y cache
+      - build:
+          requires:
+            - checkout-code
+
+      # Jobs 3 y 4: Ejecución paralela de Pruebas Unitarias y Análisis de Calidad/Linting
+      - unit-tests:
+          requires:
+            - build
+
+      - code-quality:
+          requires:
+            - build
+
+      # Job 5: Empaquetado y Verificación de Entrega (Ejecución Selectiva solo en 'main')
+      - package-and-delivery:
+          requires:
+            - unit-tests
+            - code-quality
+          filters:
+            branches:
+              only:
+                - main
+
+      # Job 6: Notificación de Éxito (solo tras entrega exitosa en main)
+      - notify-success:
+          requires:
+            - package-and-delivery
+          filters:
+            branches:
+              only:
+                - main
+
+      # Job 7: Notificación de Fallo (se dispara si falla pruebas o calidad)
+      # Nota: En CircleCI las ramas estándar ejecutan jobs que requieren éxito previo.
+
