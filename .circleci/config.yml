@@ -1,3 +1,4 @@
+
 version: 2.1
 
 executors:
@@ -9,8 +10,9 @@ executors:
       MAVEN_OPTS: -Dmaven.repo.local=.m2/repository
 
 commands:
+
   restore_maven_cache:
-    description: "Restaura la cache de dependencias Maven basada en pom.xml"
+    description: "Restaura la cache de dependencias Maven"
     steps:
       - restore_cache:
           keys:
@@ -18,7 +20,7 @@ commands:
             - v1-dependencies-
 
   save_maven_cache:
-    description: "Guarda en cache las dependencias descargadas en .m2/repository"
+    description: "Guarda las dependencias Maven"
     steps:
       - save_cache:
           paths:
@@ -26,61 +28,55 @@ commands:
           key: v1-dependencies-{{ checksum "pom.xml" }}
 
   notify_discord:
-    description: "Envia notificacion formateada a Discord mediante Webhook"
-    parameters:
-      status:
-        type: string
-        default: "SUCCESS"
-      color:
-        type: integer
-        default: 3066993 # Verde
+    description: "Envia notificacion de exito a Discord"
     steps:
       - run:
-          name: Enviar notificacion a Discord
-          when: always
+          name: Notificar exito en Discord
           command: |
             if [ -z "$DISCORD_WEBHOOK" ]; then
-              echo "ADVERTENCIA: DISCORD_WEBHOOK no esta configurada en las variables de entorno de CircleCI."
+              echo "DISCORD_WEBHOOK no configurada."
               exit 0
             fi
 
-            curl -H "Content-Type: application/json" -X POST \
-              -d "{
-                    \"embeds\": [{
-                      \"title\": \"Pipeline CircleCI: << parameters.status >>\",
-                      \"description\": \"Resultado del pipeline en el repositorio **${CIRCLE_PROJECT_REPONAME}**\",
-                      \"color\": << parameters.color >>,
-                      \"fields\": [
-                        {\"name\": \"Rama\", \"value\": \"\`${CIRCLE_BRANCH}\`\", \"inline\": true},
-                        {\"name\": \"Commit\", \"value\": \"\`${CIRCLE_SHA1:0:7}\`\", \"inline\": true},
-                        {\"name\": \"Autor\", \"value\": \"${CIRCLE_USERNAME:-Sistema}\", \"inline\": true},
-                        {\"name\": \"Workflow\", \"value\": \"${CIRCLE_WORKFLOW_ID}\", \"inline\": false},
-                        {\"name\": \"Enlace de Ejecución\", \"value\": \"[Ver en CircleCI](${CIRCLE_BUILD_URL})\", \"inline\": false}
-                      ],
-                      \"footer\": {\"text\": \"Integración Continua - CircleCI\"},
-                      \"timestamp\": \"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"
-                    }]
-                  }" \
+            curl -fsS -H "Content-Type: application/json" \
+              -X POST \
+              -d "{\"content\":\"SUCCESS: Pipeline ejecutado correctamente. Rama: ${CIRCLE_BRANCH}. Commit: ${CIRCLE_SHA1:0:7}. Ejecucion: ${CIRCLE_BUILD_URL}\"}" \
+              "$DISCORD_WEBHOOK"
+
+  notify_discord_failure:
+    description: "Envia notificacion cuando falla un job"
+    steps:
+      - run:
+          name: Notificar fallo en Discord
+          when: on_fail
+          command: |
+            if [ -z "$DISCORD_WEBHOOK" ]; then
+              echo "DISCORD_WEBHOOK no configurada."
+              exit 0
+            fi
+
+            curl -fsS -H "Content-Type: application/json" \
+              -X POST \
+              -d "{\"content\":\"FAILURE: El pipeline ha fallado. Job: ${CIRCLE_JOB}. Rama: ${CIRCLE_BRANCH}. Commit: ${CIRCLE_SHA1:0:7}. Ejecucion: ${CIRCLE_BUILD_URL}\"}" \
               "$DISCORD_WEBHOOK"
 
 jobs:
+
   checkout-code:
     executor: maven-executor
     steps:
       - checkout
       - run:
-          name: Identificar Rama y Commit
+          name: Identificar rama y commit
           command: |
-            echo "=========================================="
             echo "Proyecto: $CIRCLE_PROJECT_REPONAME"
             echo "Rama: $CIRCLE_BRANCH"
-            echo "Commit SHA: $CIRCLE_SHA1"
-            echo "Número de Build: $CIRCLE_BUILD_NUM"
-            echo "=========================================="
+            echo "Commit: $CIRCLE_SHA1"
       - persist_to_workspace:
           root: ~/project
           paths:
             - .
+      - notify_discord_failure
 
   build:
     executor: maven-executor
@@ -99,6 +95,7 @@ jobs:
           paths:
             - .m2/repository
             - target
+      - notify_discord_failure
 
   unit-tests:
     executor: maven-executor
@@ -107,14 +104,14 @@ jobs:
           at: ~/project
       - restore_maven_cache
       - run:
-          name: Ejecutar pruebas unitarias (JUnit 5 + Camel Test)
-          command: |
-            mvn -B test -Dmaven.repo.local=.m2/repository
+          name: Ejecutar pruebas unitarias
+          command: mvn -B test -Dmaven.repo.local=.m2/repository
       - store_test_results:
           path: target/surefire-reports
       - store_artifacts:
           path: target/surefire-reports
           destination: surefire-reports
+      - notify_discord_failure
 
   code-quality:
     executor: maven-executor
@@ -123,15 +120,15 @@ jobs:
           at: ~/project
       - restore_maven_cache
       - run:
-          name: Auditoria de Calidad y Linting (Checkstyle + SpotBugs)
-          command: |
-            mvn -B checkstyle:checkstyle spotbugs:check -Dmaven.repo.local=.m2/repository
+          name: Analisis de calidad Checkstyle y SpotBugs
+          command: mvn -B checkstyle:checkstyle spotbugs:check -Dmaven.repo.local=.m2/repository
       - store_artifacts:
           path: target/checkstyle-result.xml
           destination: quality-reports/checkstyle-result.xml
       - store_artifacts:
           path: target/spotbugsXml.xml
           destination: quality-reports/spotbugsXml.xml
+      - notify_discord_failure
 
   package-and-delivery:
     executor: maven-executor
@@ -141,56 +138,61 @@ jobs:
       - restore_maven_cache
       - run:
           name: Empaquetar artefacto JAR
-          command: |
-            mvn -B package -DskipTests -Dmaven.repo.local=.m2/repository
+          command: mvn -B package -DskipTests -Dmaven.repo.local=.m2/repository
       - run:
-          name: Verificacion de entrega continua (CD)
+          name: Verificar artefacto generado
           command: |
-            echo "Verificando artefacto generado para Continuous Delivery..."
             if ls target/*.jar 1> /dev/null 2>&1; then
-              echo "ÉXITO: Se encontraron artefactos JAR en target/:"
+              echo "JAR generado correctamente:"
               ls -lh target/*.jar
             else
-              echo "ERROR: No se encontró ningún archivo .jar empaquetado."
+              echo "ERROR: No se genero ningun JAR."
               exit 1
             fi
       - store_artifacts:
           path: target
           destination: binaries
+      - notify_discord_failure
 
   notify-success:
     executor: maven-executor
     steps:
-      - notify_discord:
-          status: "SUCCESS - Pipeline Exitoso"
-          color: 3066993 # Verde
-
-  notify-failure:
-    executor: maven-executor
-    steps:
-      - notify_discord:
-          status: "FAILURE - Pipeline Fallido"
-          color: 15158332 # Rojo
-
+      - notify_discord
 
 workflows:
   version: 2
 
   ci_cd_pipeline:
     jobs:
-      - checkout-code
+      - checkout-code:
+          filters:
+            branches:
+              only:
+                - main
 
       - build:
           requires:
             - checkout-code
+          filters:
+            branches:
+              only:
+                - main
 
       - unit-tests:
           requires:
             - build
+          filters:
+            branches:
+              only:
+                - main
 
       - code-quality:
           requires:
             - build
+          filters:
+            branches:
+              only:
+                - main
 
       - package-and-delivery:
           requires:
@@ -209,15 +211,34 @@ workflows:
               only:
                 - main
 
-      - notify-failure:
-          requires:
-            - build
-            - unit-tests
-            - code-quality
-            - package-and-delivery
+  develop_validation:
+    jobs:
+      - checkout-code:
           filters:
             branches:
               only:
-                - main
-          when: on_fail
+                - develop
 
+      - build:
+          requires:
+            - checkout-code
+          filters:
+            branches:
+              only:
+                - develop
+
+      - unit-tests:
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - develop
+
+      - code-quality:
+          requires:
+            - build
+          filters:
+            branches:
+              only:
+                - develop
